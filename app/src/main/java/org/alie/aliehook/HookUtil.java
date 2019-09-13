@@ -1,5 +1,8 @@
 package org.alie.aliehook;
 
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
 import android.util.Log;
 
 import java.lang.reflect.Field;
@@ -16,7 +19,9 @@ public class HookUtil {
 
     private static final String  TAG = "HookUtil";
 
-    public void hookStartActivity() {
+    private Context context;
+    public void hookStartActivity(Context context) {
+        this.context = context;
         // 还原gDefault 而gefualt 是ActivityManagerNative的成员变量，所以我们当然是要先得到ActivityManagerNative
         try {
             Class<?> activityManagerNativeClas = Class.forName("android.app.ActivityManagerNative");
@@ -52,6 +57,13 @@ public class HookUtil {
                     new Class[]{iActivityManagerInterapt}, startActivtiyMethond);
 
             // 将系统中 IactivityManger 替换为 我们代理生成的oldIactivityManager，
+            /**
+             * 这一步操作，是反射中的替换，目的是将 gDefault(Singleton对象)中的mIntsance替换成
+             * 我们的oldIactivityManager，怎么做呢？
+             * mInstance ：原属性
+             * defaultValue： mInstance所属的那个类的对象
+             * oldIactivityManager ：动态代理构造出来的类
+             */
             mInstance.set(defaultValue, oldIactivityManager);
 
         } catch (ClassNotFoundException e) {
@@ -81,6 +93,29 @@ public class HookUtil {
             Log.i(TAG,"=====invoke");
             if("startActivity".equals(method.getName())){
                 Log.i(TAG,"=====invoke===startActivity");
+                // 开始 操作回传的 Object[] args 数组参数，我们要找到arg中的intent
+
+                /**
+                 * 以下这波操作目的是找到系统的intent，之后把它给封装到newIntent中并替换
+                 */
+                Intent intent = null;
+                int index= 0;
+                for (int i = 0; i < args.length; i++) {
+                    Object arg = args[i];
+                    if(arg instanceof Intent) {
+                        intent = (Intent) arg;
+                        index = i;
+                    }
+                }
+
+                Intent newIntent = new Intent();
+                ComponentName componentName = new ComponentName(context,ProxyActivity.class);
+                newIntent.setComponent(componentName);
+                newIntent.putExtra("oldIntent",intent);
+
+
+                args[index] = newIntent;
+
             }
             return method.invoke(iActivtyManagerObject,args);
         }

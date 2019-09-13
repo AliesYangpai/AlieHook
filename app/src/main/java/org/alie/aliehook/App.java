@@ -12,6 +12,6 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         HookUtil hookUtil = new HookUtil();
-        hookUtil.hookStartActivity();
+        hookUtil.hookStartActivity(this);
     }
 }
