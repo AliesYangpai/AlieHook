@@ -3,6 +3,9 @@ package org.alie.aliehook;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 
 import java.lang.reflect.Field;
@@ -20,6 +23,32 @@ public class HookUtil {
     private static final String  TAG = "HookUtil";
 
     private Context context;
+
+    public  void hookHookMh(Context context  ) {
+        try {
+            Class<?> forName = Class.forName("android.app.ActivityThread");
+            Field currentActivityThreadField = forName.getDeclaredField("sCurrentActivityThread");
+            currentActivityThreadField.setAccessible(true);
+//            还原系统的ActivityTread   mH
+            Object activityThreadObj=currentActivityThreadField.get(null);
+
+            Field handlerField = forName.getDeclaredField("mH");
+            handlerField.setAccessible(true);
+//            hook点找到了
+            Handler mH= (Handler) handlerField.get(activityThreadObj);
+            Field callbackField = Handler.class.getDeclaredField("mCallback");
+
+            callbackField.setAccessible(true);
+
+            callbackField.set(mH,new ActivityMH(mH));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+
+
     public void hookStartActivity(Context context) {
         this.context = context;
         // 还原gDefault 而gefualt 是ActivityManagerNative的成员变量，所以我们当然是要先得到ActivityManagerNative
@@ -75,6 +104,62 @@ public class HookUtil {
         }
     }
 
+
+    class ActivityMH implements  Handler.Callback{
+        private  Handler mH;
+
+        public ActivityMH(Handler mH) {
+            this.mH = mH;
+        }
+
+        @Override
+        public boolean handleMessage(Message msg) {
+//LAUNCH_ACTIVITY ==100 即将要加载一个activity了
+            if (msg.what == 100) {
+//加工 --完  一定丢给系统  secondActivity  -hook->proxyActivity---hook->    secondeActivtiy
+                handleLuachActivity(msg);
+            }
+//做了真正的跳转
+            mH.handleMessage(msg);
+            return  true;
+        }
+
+        private void handleLuachActivity(Message msg) {
+//            还原
+            Object obj = msg.obj;
+            try {
+                Field intentField=obj.getClass().getDeclaredField("intent");
+                intentField.setAccessible(true);
+                //  ProxyActivity   2
+                Intent realyIntent = (Intent) intentField.get(obj);
+//                sconedActivity  1
+                Intent oldIntent = realyIntent.getParcelableExtra("oldIntent");
+                if (oldIntent != null) {
+
+                    // *** 下面就是逻辑判断了
+//                    集中式登录
+//                    SharedPreferences share = context.getSharedPreferences("david",
+//                            Context.MODE_PRIVATE);
+//                    if (share.getBoolean("login",false)||oldIntent.getComponent().getClassName().equals(SceondActivity.class.getName())) {
+//
+////                      登录  还原  把原有的意图    放到realyIntent
+//                        realyIntent.setComponent(oldIntent.getComponent());
+//                    }else {
+//                        ComponentName componentName = new ComponentName(context,LoginActivity.class);
+//                        realyIntent.putExtra("extraIntent", oldIntent.getComponent()
+//                                .getClassName());
+//                        realyIntent.setComponent(componentName);
+//                    }
+                }
+
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+
+        }
+    }
 
     class startActivtiy implements InvocationHandler {
 
